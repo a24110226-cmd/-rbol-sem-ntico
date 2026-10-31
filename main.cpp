@@ -348,6 +348,30 @@ TreeNode buildTree(std::vector<Item> items,
     return node;
 }
 
+enum class Satisfiability { Satisfiable, Unsatisfiable, LimitReached };
+
+Satisfiability checkSatisfiability(const std::vector<Item>& items,
+    const std::vector<std::pair<std::string, std::string>>& atoms) {
+    std::size_t budget = 50000;
+    const auto tree = buildTree(items, atoms, budget);
+    std::vector<const TreeNode*> pending{&tree};
+    bool hasOpenBranch = false;
+    bool limitReached = false;
+    while (!pending.empty()) {
+        const auto* node = pending.back();
+        pending.pop_back();
+        if (node->children.empty()) {
+            if (node->label.rfind("ABIERTA:", 0) == 0) hasOpenBranch = true;
+            if (node->label == "Límite de expansión alcanzado") limitReached = true;
+        } else {
+            for (const auto& child : node->children) pending.push_back(&child);
+        }
+    }
+
+    if (limitReached) return Satisfiability::LimitReached;
+    return hasOpenBranch ? Satisfiability::Satisfiable : Satisfiability::Unsatisfiable;
+}
+
 void printTree(const TreeNode& node, const std::string& prefix = "", bool last = true, bool root = true) {
     if (root) {
         std::cout << node.label << '\n';
@@ -376,6 +400,37 @@ void addRules(std::vector<Rule>& rules, AtomRegistry& atoms) {
             std::cout << "No se pudo interpretar: " << error.what() << '\n';
         }
     }
+}
+
+void loadExample(std::vector<Rule>& rules, AtomRegistry& atoms) {
+    if (!rules.empty()) {
+        std::cout << "Primero limpia la base de conocimiento (opción 8) para cargar el ejemplo sin mezclarlo.\n";
+        return;
+    }
+
+    const std::vector<std::string> exampleRules = {
+        "Llueve",
+        "Si llueve, entonces hay nubes"
+    };
+    std::vector<Rule> parsedRules;
+    try {
+        SpanishParser parser(atoms);
+        for (const auto& text : exampleRules) {
+            parsedRules.push_back({text, parser.parse(text)});
+        }
+    } catch (const std::exception& error) {
+        std::cout << "No se pudo cargar el ejemplo: " << error.what() << '\n';
+        return;
+    }
+
+    rules.insert(rules.end(), parsedRules.begin(), parsedRules.end());
+    std::cout << "Ejemplo cargado. Reglas guardadas:\n";
+    for (std::size_t index = 0; index < rules.size(); ++index) {
+        std::cout << "R" << index + 1 << ": " << rules[index].text << "  =>  "
+                  << formulaText(rules[index].formula) << '\n';
+    }
+    std::cout << "Ahora elige 7 y prueba: \"Hay nubes\" (verdadera), "
+              << "\"No llueve\" (falsa) o \"Hace frío\" (indeterminada).\n";
 }
 
 void showRules(const std::vector<Rule>& rules) {
@@ -411,6 +466,52 @@ void searchAtoms(const AtomRegistry& atoms) {
         }
     }
     if (!found) std::cout << "No se encontraron átomos coincidentes.\n";
+}
+
+void queryTruth(const std::vector<Rule>& rules, AtomRegistry& atoms) {
+    std::cout << "Frase que quieres evaluar: ";
+    std::string text;
+    std::getline(std::cin, text);
+
+    try {
+        SpanishParser parser(atoms);
+        const auto query = parser.parse(text);
+        std::vector<Item> knowledgeBase;
+        for (const auto& rule : rules) knowledgeBase.push_back({rule.formula, false});
+
+        const auto baseStatus = checkSatisfiability(knowledgeBase, atoms.atoms());
+        if (baseStatus == Satisfiability::Unsatisfiable) {
+            std::cout << "La base de conocimiento es inconsistente; no se puede determinar la frase.\n";
+            return;
+        }
+        if (baseStatus == Satisfiability::LimitReached) {
+            std::cout << "No se pudo determinar: se alcanzó el límite de expansión.\n";
+            return;
+        }
+
+        auto withQuery = knowledgeBase;
+        withQuery.push_back({query, false});
+        auto withNegatedQuery = knowledgeBase;
+        withNegatedQuery.push_back({negate(query), false});
+
+        const auto trueStatus = checkSatisfiability(withQuery, atoms.atoms());
+        const auto falseStatus = checkSatisfiability(withNegatedQuery, atoms.atoms());
+        if (trueStatus == Satisfiability::LimitReached || falseStatus == Satisfiability::LimitReached) {
+            std::cout << "No se pudo determinar: se alcanzó el límite de expansión.\n";
+        } else if (falseStatus == Satisfiability::Unsatisfiable) {
+            std::cout << "\"" << text << "\" es verdadera según las reglas ("
+                      << formulaText(query) << ").\n";
+        } else if (trueStatus == Satisfiability::Unsatisfiable) {
+            std::cout << "\"" << text << "\" es falsa según las reglas ("
+                      << formulaText(query) << ").\n";
+        } else {
+            std::cout << "No se puede determinar si \"" << text
+                      << "\" es verdadera o falsa con las reglas actuales ("
+                      << formulaText(query) << ").\n";
+        }
+    } catch (const std::exception& error) {
+        std::cout << "No se pudo interpretar: " << error.what() << '\n';
+    }
 }
 
 void analyze(const std::vector<Rule>& rules, const AtomRegistry& atoms) {
@@ -457,31 +558,43 @@ int main() {
     std::vector<Rule> rules;
     while (true) {
         std::cout << "\n=== Árbol semántico ===\n"
-                  << "1. Agregar reglas\n"
-                  << "2. Ver reglas y fórmulas\n"
-                  << "3. Ver tabla de átomos\n"
-                  << "4. Buscar átomo\n"
-                  << "5. Construir árbol\n"
-                  << "6. Limpiar base de conocimiento\n"
+                  << "1. Cargar ejemplo listo para probar\n"
+                  << "2. Agregar mis propias reglas\n"
+                  << "3. Ver reglas y fórmulas guardadas\n"
+                  << "4. Ver tabla de átomos\n"
+                  << "5. Buscar átomo\n"
+                  << "6. Construir árbol semántico\n"
+                  << "7. Consultar verdad de una frase\n"
+                  << "8. Limpiar base de conocimiento\n"
+                  << "9. Ayuda rápida\n"
                   << "0. Salir\n"
                   << "Opción: ";
         std::string option;
         if (!std::getline(std::cin, option)) break;
         if (option == "0") break;
         if (option == "1") {
-            addRules(rules, atoms);
+            loadExample(rules, atoms);
         } else if (option == "2") {
-            showRules(rules);
+            addRules(rules, atoms);
         } else if (option == "3") {
-            showAtoms(atoms);
+            showRules(rules);
         } else if (option == "4") {
-            searchAtoms(atoms);
+            showAtoms(atoms);
         } else if (option == "5") {
-            analyze(rules, atoms);
+            searchAtoms(atoms);
         } else if (option == "6") {
+            analyze(rules, atoms);
+        } else if (option == "7") {
+            queryTruth(rules, atoms);
+        } else if (option == "8") {
             rules.clear();
             atoms = AtomRegistry{};
             std::cout << "Base de conocimiento vacía.\n";
+        } else if (option == "9") {
+            std::cout << "Para empezar: elige 1 para cargar el ejemplo y luego 7 para consultar una frase.\n"
+                      << "Escribe la frase completa; usa no, y, o, si ... entonces ... o si y solo si.\n"
+                      << "Prueba \"Hay nubes\", \"No llueve\" y \"Hace frío\".\n"
+                      << "Las consultas se comparan con las reglas guardadas; no verifican hechos del mundo real.\n";
         } else {
             std::cout << "Opción no reconocida.\n";
         }

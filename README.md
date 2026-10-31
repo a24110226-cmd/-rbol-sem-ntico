@@ -14,7 +14,7 @@ cmake --build build
 
 ## Uso
 
-En el menú, elige **Agregar reglas** e introduce una regla por línea. Deja una línea vacía para terminar. Después puedes consultar las fórmulas, ver la tabla de átomos, buscar por parte del significado y construir el árbol. **Limpiar base de conocimiento** elimina las reglas y los átomos registrados.
+Para empezar sin escribir reglas, elige **Cargar ejemplo listo para probar**. Incluye `Llueve` y `Si llueve, entonces hay nubes`. Después elige **Consultar verdad de una frase** y prueba `Hay nubes` (verdadera), `No llueve` (falsa) y `Hace frío` (indeterminada). Para ingresar tus propias reglas, elige **Agregar mis propias reglas** y escribe una por línea; deja una línea vacía para terminar. La opción **Ayuda rápida** muestra esta guía en el programa. **Limpiar base de conocimiento** elimina las reglas y los átomos registrados.
 
 Se reconocen estos conectores:
 
@@ -26,9 +26,11 @@ Se reconocen estos conectores:
 | `si ..., entonces ...` | `→` |
 | `... si y solo si ...` | `↔` |
 
-Las frases atómicas se identifican por su texto normalizado; repetir una proposición reutiliza su letra. El analizador es sintáctico, no un modelo de comprensión general del español: conviene escribir los conectores con las formas indicadas y usar paréntesis cuando una frase pueda tener más de una lectura.
+Las frases atómicas se identifican por su texto normalizado; repetir una proposición reutiliza su letra. Las letras (`p`, `q`, etc.) son nombres simbólicos de proposiciones, no una codificación *one-hot*. El analizador es sintáctico, no un modelo de comprensión general del español: conviene escribir los conectores con las formas indicadas y usar paréntesis cuando una frase pueda tener más de una lectura.
 
 El tableau supone verdaderas todas las reglas. Aplica las expansiones de los cinco conectores, marca las fórmulas aplicadas, cierra las ramas con un átomo y su negación, y muestra las asignaciones de las ramas abiertas. Si no queda ninguna rama abierta, informa que la base de conocimiento es insatisfacible.
+
+La consulta de verdad compara la base con la frase y con su negación: informa que es verdadera si la base implica la frase, falsa si implica su negación e indeterminada si ambas opciones son compatibles con las reglas. Si las reglas son inconsistentes o se alcanza el límite de expansión, lo indica en vez de afirmar un resultado. Esto determina consecuencias lógicas de la información ingresada; no comprueba por sí solo si un hecho es verdadero en el mundo real.
 
 ## Caso de prueba
 
